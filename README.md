@@ -1,304 +1,191 @@
-# Photo Consolidator
+# Photo Consolidator Rev2
 
-Photo Consolidator is a local Python/Tkinter desktop utility for consolidating photos from a folder tree into the selected folder's top level. This allows users to merge backups that contain duplicates safely while also managing duplicate filename or size issues from swapping sd cards, resetting cameras etc. In a classic windows environment in many case the file comparison info is not shown or it is too cumbersome to review each file. 
+> A bespoke desktop tool for flattening a chaotic photo tree into a single, deduplicated, conflict-reviewed folder — with staging, quarantine, and a full audit manifest.
 
-The utility recursively finds supported image files, groups files with clashing names, preselects the newest variant, and lets the user choose the single version to retain. Retained images are moved through a verified staging area, while all other folder content is moved to a timestamped quarantine folder rather than permanently deleted. The quarantine can be offloaded onto a spare drive or deleted once the selected versions are imported into your normal processing pipeline. 
 
-## Key Features
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#requirements)
+[![Tkinter](https://img.shields.io/badge/UI-Tkinter-informational.svg)](https://docs.python.org/3/library/tkinter.html)
+[![Status](https://img.shields.io/badge/status-bespoke%20%2F%20maintained-brightgreen.svg)](#status--scope)
+[![PRs](https://img.shields.io/badge/PRs-welcome-success.svg)](#contributing)
 
-- Recursively scans a selected root folder
-- Recognizes `.png`, `.jpg`, and `.jpeg` files, case-insensitively (user can modify in source)
-- Groups filename conflicts case-insensitively
-- Shows all variants associated with a conflicting filename
-- Preselects the newest variant in each group
-- Allows the user to retain a different variant
-- Displays image previews when Pillow is installed
-- Uses SHA-256 hashes to verify retained images after staging
-- Moves non-retained content to a sibling quarantine folder
-- Writes a timestamped CSV operation manifest
-- Does not permanently delete files
-- Does not follow symbolic links during scanning
+---
 
-## Installation Prerequisites
+## Why this exists
 
-### Required
+I shoot a lot, and I edit in rounds. Over a couple of years I ended up with the same shoot scattered across a laptop, an external drive, two SD cards, and three "final_final_v2" folders. Filenames like `IMG_0421.JPG` and `DSC_0421.NEF` and `0421-edit.jpg` collided constantly — sometimes they were genuinely different photos, sometimes they were the same photo at different stages.
 
-1. **Python 3.9 or newer**
+I didn't want a photo library. I didn't want faces, albums, tags, or a database. I wanted to point a tool at one folder, let it walk the whole tree, and end up with:
 
-   Check the installed Python version:
+- One copy of each filename at the top level.
+- Every legitimate name collision surfaced and reviewed by me, not silently overwritten.
+- Everything else moved to a quarantine folder I could triage later, in one place, with a CSV telling me exactly what happened.
+- The ability to abort without losing data.
 
-   ```bash
-   python --version
-   ```
+That's all. It's a single-task tool. It does one thing. If you need catalog management, use something else — see [Status & Scope](#status--scope).
 
-   On systems where `python` points to an older version or is not available, try:
+---
 
-   ```bash
-   python3 --version
-   ```
+## What it does
 
-2. **Tkinter**
+Given a root folder, Photo Consolidator:
 
-   Tkinter is part of the Python standard library, but some Linux distributions install it separately.
+1. **Recursively scans** for image files matching a configurable set of extensions.
+2. **Groups files by case-insensitive filename** — every `IMG_0421.jpg` in the tree becomes one group.
+3. **Pre-selects the newest variant** in each group (by modified time, then size, then path).
+4. **Lets you review conflicts** in a UI with thumbnails, filters, and bulk auto-select rules.
+5. On execute, **stages** the retained files, **quarantines** everything else to a sibling folder, then **promotes** the retained files back into the now-empty root.
+6. Writes a **CSV manifest** with SHA-256 hashes for every move.
 
-   Test whether Tkinter is available:
+Nothing is permanently deleted. Every action is logged. Aborting mid-run leaves staging and quarantine in place for manual recovery.
 
-   ```bash
-   python -m tkinter
-   ```
+### The three-phase move
 
-   A small Tk window should open. If it does, Tkinter is installed correctly.
+```
+Before:
+  root/
+    a/IMG_0421.jpg
+    b/IMG_0421.jpg          <- older duplicate
+    c/DSC_0042.png
+    d/vacation/DSC_0042.png <- older duplicate
 
-   Common Linux installation commands are:
+Execute:
 
-   **Ubuntu or Debian:**
+  Phase 1: stage retained files to  ../_photo_consolidator_staging_root_<ts>/
+  Phase 2: quarantine everything else to ../_photo_consolidator_quarantine_root_<ts>/
+  Phase 3: promote staged files back into the (now empty) root
 
-   ```bash
-   sudo apt install python3-tk
-   ```
+After:
+  root/
+    IMG_0421.jpg
+    DSC_0042.png
 
-   **Fedora:**
+  ../_photo_consolidator_quarantine_root_<ts>/
+    b/IMG_0421.jpg
+    d/vacation/DSC_0042.png
 
-   ```bash
-   sudo dnf install python3-tkinter
-   ```
-
-   **Arch Linux:**
-
-   ```bash
-   sudo pacman -S tk
-   ```
-
-   Standard Python installers for Windows and macOS normally include Tkinter.
-
-### Recommended
-
-3. **Pillow**
-
-   Pillow provides JPG and PNG thumbnail previews in the conflict-review interface.
-
-   Install it with:
-
-   ```bash
-   python -m pip install Pillow
-   ```
-
-   The application runs without Pillow, but image previews are disabled.
-
-### No Additional Runtime Packages Required
-
-All other modules used by the application are from the Python standard library:
-
-- `csv`
-- `datetime`
-- `hashlib`
-- `os`
-- `pathlib`
-- `shutil`
-- `tkinter`
-
-## Files
-
-```text
-photo-consolidator/
-├── photo_consolidator.py
-└── README.md
+  ../_photo_consolidator_manifest_root_<ts>.csv
 ```
 
-## Running the Application
+---
 
-Open a terminal in the project folder and run:
+## Features
 
-```bash
-python photo_consolidator.py
-```
+| Area | What you get |
+|---|---|
+| Scanning | Recursive walk, symlink skip, `_photo_consolidator_*` self-exclusion, per-file error tolerance |
+| Grouping | Case-insensitive filename grouping, newest-first sorting, unique groups sorted after conflicts |
+| Review UI | Group tree, variant tree with retained marker, Pillow thumbnail preview (optional), double-click to retain |
+| Filtering | Text filter on filename, "show conflicts only" checkbox |
+| Bulk selection | Auto-select newest / largest / shortest path for conflict groups; reset all to newest |
+| File types | Checkbox set for `.png .jpg .jpeg .webp .gif .bmp .tiff .tif` plus raw extensions, custom comma-separated entry |
+| Threading | Scan and execute run off the Tk main thread; UI stays responsive |
+| Progress | Determinate progress bar with per-file status text |
+| Controls | Pause (execute only), Abort (scan or execute), close-confirmation during operations |
+| Safety | `os.replace` for atomic same-filesystem moves, `shutil.move` fallback on `EXDEV`, cross-filesystem warning before start |
+| Audit | CSV manifest with `action, source, destination, sha256`; partial manifest written on abort or error |
+| Recovery | Staging and quarantine preserved on any failure; "Open Root / Quarantine / Manifest Folder" buttons |
 
-If required on your system, use:
+---
 
-```bash
-python3 photo_consolidator.py
-```
+## Requirements
 
-## Recommended First Run
-
-Test the application on a copied sample folder before using it on the full photo collection.
-
-A useful test structure is:
-
-```text
-sample_photos/
-├── photo01.jpg
-├── notes.txt
-├── trip_a/
-│   ├── photo01.jpg
-│   └── photo02.png
-└── trip_b/
-    ├── photo01.jpg
-    └── metadata.json
-```
-
-This example creates a conflict group for `photo01.jpg`. The newest version is selected by default, but any displayed variant can be selected for retention.
-
-## Usage
-
-1. Start `photo_consolidator.py`.
-2. Select **Select Folder**.
-3. Choose the root folder to consolidate.
-4. Select **Scan**.
-5. Review filename groups marked **Conflict**.
-6. Highlight a variant to view its metadata and preview.
-7. Select **Retain Highlighted Variant** or double-click the desired variant.
-8. Review the scan summary.
-9. Select **Execute Consolidation**.
-10. Confirm the staging and quarantine operation.
-
-Scanning does not modify any files. Files are changed only after **Execute Consolidation** is selected and the confirmation dialog is accepted.
-
-## Conflict Selection Logic
-
-Filename groups are matched case-insensitively. For example, these names are treated as one conflict group:
-
-```text
-Photo01.JPG
-photo01.jpg
-PHOTO01.jpg
-```
-
-The default retained version is determined by sorting variants using:
-
-1. Newest modification timestamp
-2. Largest file size
-3. Relative path as a deterministic tie-breaker
-
-The user may override the default before execution.
-
-## Two-Phase Quarantine Operation
-
-The application intentionally avoids immediate permanent deletion.
-
-### Phase 1: Stage and Verify Retained Images
-
-- Each selected image is moved to a timestamped sibling staging folder.
-- A SHA-256 hash is calculated before the move.
-- The staged file is hashed again.
-- Processing stops if the hashes do not match.
-
-Example staging folder:
-
-```text
-_photo_consolidator_staging_Photos_20260916_145900
-```
-
-### Phase 2: Quarantine and Promote
-
-- All content remaining inside the selected root is moved to a timestamped sibling quarantine folder.
-- The staged retained images are moved into the root folder.
-- The empty staging folder is removed.
-- The quarantine folder is retained for manual review or deletion.
-
-Example quarantine folder:
-
-```text
-_photo_consolidator_quarantine_Photos_20260916_145900
-```
-
-The staging and quarantine folders are created beside the selected root, not inside it. Ensure that the root folder's parent location has enough free space and that you have write permission there.
-
-## Operation Manifest
-
-A CSV manifest is written beside the selected root folder.
-
-Example:
-
-```text
-_photo_consolidator_manifest_Photos_20260916_145900.csv
-```
-
-Manifest actions include:
-
-- `KEEP`: selected image moved to staging
-- `QUARANTINE`: remaining root entry moved to quarantine
-- `PROMOTE`: staged image moved into the root
-- `ERROR`: operation stopped because an error occurred
-
-The manifest records source paths, destination paths, and SHA-256 hashes where applicable.
-
-## Safety Notes
-
-- The application changes the selected folder only after explicit confirmation.
-- It does not permanently delete the quarantine folder.
-- It does not automatically undo a partially completed operation.
-- If processing stops, preserve the staging folder, quarantine folder, and manifest until the file locations have been reviewed.
-- Do not select a folder currently being synchronized, indexed, backed up, or modified by another application.
-- Close applications that may have the photos open before execution.
-- Confirm that adequate free disk space is available in the selected root's parent location.
-- Maintain an independent backup for valuable or irreplaceable images.
-
-## Supported Files
-
-The current starter implementation retains:
-
-```text
-.png
-.jpg
-.jpeg
-```
-
-All other files and directories are moved to quarantine during execution.
-
-The application does not currently inspect image contents to determine whether a file extension is accurate.
-
-## Troubleshooting
-
-### The application does not start
-
-Confirm the file passes a syntax check:
-
-```bash
-python -m py_compile photo_consolidator.py
-```
-
-Then verify Tkinter:
-
-```bash
-python -m tkinter
-```
-
-### No thumbnail appears
-
-Install Pillow:
+- Python **3.9 or newer** (uses `from __future__ import annotations`, `zoneinfo`-free — should work on 3.8, untested).
+- **Tkinter** — bundled with most CPython installs; on Debian/Ubuntu it's `python3-tk`.
+- **Pillow** *(optional)* — only needed for thumbnail previews.
 
 ```bash
 python -m pip install Pillow
 ```
 
-Restart the application afterward. 
+Without Pillow, the preview pane shows the relative path and a hint instead of a thumbnail. Everything else works.
 
-### Permission denied
+---
 
-Confirm that your user account has permission to:
+## Installation
 
-- Read every file under the selected root
-- Create folders beside the selected root
-- Move files out of and into the selected root
-- Write the CSV manifest in the root's parent folder
+```bash
+git clone https://github.com/<you>/photo-consolidator.git
+cd photo-consolidator
+python -m pip install -r requirements.txt   # optional, only Pillow
+python photo_consolidator.py
+```
 
-Large raw files or files on local NAS/cloud drives may take longer to process, test using locally stored jpg and scale up from there.
+Or just download `photo_consolidator.py` and run it. It's a single file with no required dependencies.
 
-### Files are on different filesystems or storage devices
+---
 
-The utility uses `shutil.move`. A move on the same filesystem is generally a rename operation. A move across filesystems may require copying and then removing the source. Avoid disconnecting storage or interrupting the application during execution.
+## Usage
 
-### The operation stops partway through
+1. **Select Folder** — choose the root you want to flatten. Everything under this folder will be considered.
+2. **(Optional) File Types tab** — adjust which extensions are scanned. Raw formats are included by default but won't preview.
+3. **Scan** — walks the tree. Nothing is changed. Conflicts and unique names appear in the left tree.
+4. **Review** — click a group, pick the variant you want to keep. Use the filter, the conflicts-only checkbox, or the auto-select buttons to work faster.
+5. **Execute Consolidation** — the confirmation dialog tells you exactly where the quarantine will be created. On confirm, the three-phase move runs with progress.
+6. **Inspect** — after completion, use the Open Root / Open Quarantine / Open Manifest Folder buttons to verify.
 
-Do not delete or rename the generated staging, quarantine, or manifest items. Review the manifest first. It records the completed operations and the reported error.
+### Aborting safely
 
-## Current Starter Limitations (potential next steps)
+- **Scan**: no files are touched. Abort just stops the walk.
+- **Execute**: the current file move finishes, then the worker stops, writes a partial manifest, and returns. Staging and quarantine are left intact. No rollback is attempted — the manifest is your recovery recipe.
 
-- No automatic rollback or one-click restore
-- No permanent-delete button for quarantine
-- No duplicate detection across different filenames e.g. Img001.raw Img001.png Img001.jpg are all seen as unique 
-- No EXIF capture-time comparison
-- No HEIC, TIFF, GIF, or RAW image support natively
-- No background worker for very large scans or hash operations
-- No packaged executable installer
+---
+
+## Design notes
+
+- **All UI on the Tk main thread.** Workers are pure filesystem/CPU classes that communicate via a `queue.Queue`. No Tk call ever crosses a thread boundary.
+- **`os.replace` first, `shutil.move` second.** Same-filesystem moves are atomic renames. Cross-filesystem moves fall back to copy+delete. The tool warns you before starting if it detects `root` and `root.parent` on different devices.
+- **No silent overwrites.** Every destination is checked before the move. If it exists, the operation raises rather than clobbering.
+- **No permanent deletion anywhere.** Quarantine exists precisely so that a wrong decision is recoverable. The manifest is the ledger.
+- **Self-exclusion.** Folders prefixed with `_photo_consolidator_` are skipped during scan, so re-running the tool on a parent directory doesn't re-ingest your own quarantine.
+
+---
+
+## Status & Scope
+
+This is a **bespoke tool built for a single large consolidation task** — hundreds of gigabytes spread across multiple drives, multiple cameras, and multiple rounds of edits. It is intentionally not a photo manager.
+
+**Intentionally missing** (do not open issues asking for these):
+
+- No library, catalog, or database.
+- No albums, tags, ratings, faces, or keywords.
+- No cloud sync, upload, or sharing.
+- No editing, RAW development, or export presets.
+- No deduplication by content hash (grouping is by filename only).
+- No "portfolio management" of any kind.
+
+If you need any of the above, use Darktable, Lightroom, digiKam, PhotoPrism, or Immich. This tool exists for the flat, deterministic, reviewable job of *getting files out of a mess and into one folder without losing anything*.
+
+It can absolutely be forked and extended for other one-off tasks — batch renames, format conversions, manifest-driven recovery — but the maintainer's scope is deliberately narrow.
+
+---
+
+## Potential next steps
+
+These are the directions that would make the tool more useful beyond its original run. **Pull requests are welcome** for any of them.
+
+- **Manifest-driven recovery.** Read a manifest CSV and reverse it: move KEEP files back to their original relative paths, move QUARANTINE files back from quarantine. The manifest already has everything needed; only the reverse executor is missing.
+- **Dry-run mode.** Produce the manifest and plan without moving anything, for large runs you want to preview.
+- **Unit tests.** The `Scanner` and `Executor` classes are pure and testable with `tmp_path`. Highest-value targets: grouping, newest-default selection, `safe_move` same-fs and cross-fs, abort-mid-phase manifest contents.
+- **Logging to file.** Replace ad-hoc `status_var` updates with `logging` to a rotating file next to the manifest, so post-mortem inspection doesn't depend on a dismissed messagebox.
+- **CLI mode.** An `argparse` entrypoint that reuses `Scanner` and `Executor` for headless/batch runs.
+- **Window geometry persistence.** Save size and position between launches.
+- **Group by stem** (ignore extension) as an option, for `photo.jpg` + `photo.png` that belong together.
+- **Content-hash duplicate detection** as an opt-in secondary pass.
+
+If you want to work on any of these, open an issue first to coordinate, then send a PR. Small, focused PRs are preferred over sweeping rewrites.
+
+---
+
+## Contributing
+
+- Bug reports: include the OS, Python version, a minimal reproduction, and — if the failure was mid-execute — the manifest CSV.
+- Feature requests: check [Status & Scope](#status--scope) first. If it's out of scope, a fork is the right answer, and that's fine.
+- PRs: one concern per PR, with a note in the description about which behavior changed and why. If you touch `Executor`, add or extend a test.
+
+---
+
+## Acknowledgements
+
+Built in an afternoon to solve a problem that had been sitting on an external drive for four years. Thanks to the `tkinter.ttk` maintainers for making a reviewable desktop UI achievable in a single file, and to whoever first wrote `shutil.move` — you saved me from writing cross-device file handling by hand.
+```
